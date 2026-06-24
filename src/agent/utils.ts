@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { OPEN_WIKI_DIR, UPDATE_METADATA_PATH } from "../constants.js";
 import type { OpenWikiCommand, RunContext, UpdateMetadata } from "./types.js";
+import type { Dirent } from "node:fs";
 
 const execFileAsync = promisify(execFile);
 
@@ -114,12 +115,12 @@ async function addDirectoryToSnapshot(
   directory: string,
   relativeDirectory: string,
 ): Promise<void> {
-  let entries: string[];
+  let entries: Dirent[];
 
   try {
-    entries = await readdir(directory);
+    entries = await readdir(directory, { withFileTypes: true });
   } catch (error) {
-    if (isFileNotFoundError(error)) {
+    if (isExpectedSnapshotRaceError(error)) {
       hash.update("missing");
       return;
     }
@@ -127,29 +128,50 @@ async function addDirectoryToSnapshot(
     throw error;
   }
 
-  for (const entry of entries.sort()) {
-    const entryPath = path.join(directory, entry);
-    const relativePath = path.join(relativeDirectory, entry);
+  for (const entry of entries.sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )) {
+    const entryPath = path.join(directory, entry.name);
+    const relativePath = path.join(relativeDirectory, entry.name);
 
     if (relativePath === path.basename(UPDATE_METADATA_PATH)) {
       continue;
     }
 
-    const entryStat = await stat(entryPath);
-
-    if (entryStat.isDirectory()) {
+    if (entry.isDirectory()) {
       hash.update(`dir:${relativePath}\0`);
       await addDirectoryToSnapshot(hash, entryPath, relativePath);
       continue;
     }
 
-    if (!entryStat.isFile()) {
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    const fileContent = await readSnapshotFile(entryPath);
+
+    if (fileContent === null) {
       continue;
     }
 
     hash.update(`file:${relativePath}\0`);
-    hash.update(await readFile(entryPath));
+    hash.update(fileContent);
     hash.update("\0");
+  }
+}
+
+/**
+ * Reads snapshot bytes while tolerating files that move mid-scan.
+ */
+async function readSnapshotFile(filePath: string): Promise<Buffer | null> {
+  try {
+    return await readFile(filePath);
+  } catch (error) {
+    if (isExpectedSnapshotRaceError(error)) {
+      return null;
+    }
+
+    throw error;
   }
 }
 
@@ -267,6 +289,16 @@ function isFileNotFoundError(error: unknown): boolean {
     error instanceof Error &&
     "code" in error &&
     (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
+function isExpectedSnapshotRaceError(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error)) {
+    return false;
+  }
+
+  return ["EISDIR", "ENOENT", "ENOTDIR"].includes(
+    (error as NodeJS.ErrnoException).code ?? "",
   );
 }
 
