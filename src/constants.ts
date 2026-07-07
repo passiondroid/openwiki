@@ -8,15 +8,18 @@ export const OPENAI_COMPATIBLE_BASE_URL_ENV_KEY = "OPENAI_COMPATIBLE_BASE_URL";
 export const ANTHROPIC_API_KEY_ENV_KEY = "ANTHROPIC_API_KEY";
 export const ANTHROPIC_BASE_URL_ENV_KEY = "ANTHROPIC_BASE_URL";
 export const OPENROUTER_API_KEY_ENV_KEY = "OPENROUTER_API_KEY";
+export const MIMO_API_KEY_ENV_KEY = "MIMO_API_KEY";
 export const OPENWIKI_PROVIDER_ENV_KEY = "OPENWIKI_PROVIDER";
 export const OPENWIKI_MODEL_ID_ENV_KEY = "OPENWIKI_MODEL_ID";
 export const DEFAULT_PROVIDER = "openrouter";
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+export const MIMO_BASE_URL = "https://token-plan-sgp.xiaomimimo.com/v1";
 
 export type OpenWikiProvider =
   | "anthropic"
   | "baseten"
   | "fireworks"
+  | "mimo"
   | "openai"
   | "openai-compatible"
   | "openrouter";
@@ -49,6 +52,7 @@ export const SELECTABLE_OPENWIKI_PROVIDERS = [
   "openrouter",
   "baseten",
   "fireworks",
+  "mimo",
   "openai",
   "openai-compatible",
   "anthropic",
@@ -74,6 +78,15 @@ export const PROVIDER_CONFIGS: Record<OpenWikiProvider, ProviderConfig> = {
         id: "accounts/fireworks/models/kimi-k2p7-code",
         label: "Kimi K2.7 Code",
       },
+    ],
+  },
+  mimo: {
+    apiKeyEnvKey: MIMO_API_KEY_ENV_KEY,
+    baseURL: MIMO_BASE_URL,
+    label: "Xiaomi MiMo",
+    modelOptions: [
+      { id: "mimo-v2.5-pro", label: "MiMo V2.5 Pro" },
+      { id: "mimo-v2.5", label: "MiMo V2.5" },
     ],
   },
   openai: {

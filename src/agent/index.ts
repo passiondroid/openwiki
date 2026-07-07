@@ -94,6 +94,7 @@ export async function runOpenWikiAgent(
   emitDebug(options, `model=${modelId}`);
 
   const debugFetchCapture = installOpenRouterDebugFetch(options);
+  const mimoDebugCapture = installMimoDebugFetch(options);
 
   try {
     return await runOpenWikiAgentWithModelFallbacks(
@@ -109,6 +110,7 @@ export async function runOpenWikiAgent(
     throw error;
   } finally {
     debugFetchCapture.restore();
+    mimoDebugCapture.restore();
   }
 }
 
@@ -426,6 +428,21 @@ function createModel(provider: OpenWikiProvider, modelId: string) {
       models,
       route: "fallback",
       siteName: "OpenWiki",
+    });
+  }
+
+  if (provider === "mimo") {
+    const baseURL = resolveProviderBaseUrl(provider);
+
+    return new ChatOpenAI({
+      apiKey: process.env[getProviderApiKeyEnvKey(provider)],
+      configuration: baseURL
+        ? {
+            baseURL,
+          }
+        : undefined,
+      model: modelId,
+      maxCompletionTokens: 16384,
     });
   }
 
@@ -1354,4 +1371,46 @@ function formatUrlDebugValue(value: string): string {
       `${value.slice(0, 6)}...${value.slice(-4)}`,
     )})`;
   }
+}
+
+type MimoDebugCapture = {
+  restore: () => void;
+};
+
+function installMimoDebugFetch(
+  options: OpenWikiRunOptions,
+): MimoDebugCapture {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input, init) => {
+    const url = getFetchInputUrl(input);
+
+    if (url && url.includes("xiaomimimo.com")) {
+      const body = typeof init?.body === "string" ? init.body : null;
+      if (body) {
+        try {
+          const parsed = JSON.parse(body);
+          emitDebug(options, `mimo.request model=${parsed.model} keys=${Object.keys(parsed).join(",")} msgs=${parsed.messages?.length ?? 0}`);
+          if (parsed.tools) {
+            emitDebug(options, `mimo.request.tools count=${parsed.tools.length} choice=${parsed.tool_choice ?? "none"} parallel=${parsed.parallel_tool_calls ?? "?"}`);
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    const response = await originalFetch(input, init);
+
+    if (url && url.includes("xiaomimimo.com") && !response.ok) {
+      const errBody = await response.clone().text().catch(() => "");
+      emitDebug(options, `mimo.error status=${response.status} body=${errBody.substring(0, 500)}`);
+    }
+
+    return response;
+  }) satisfies typeof fetch;
+
+  return {
+    restore: () => {
+      globalThis.fetch = originalFetch;
+    },
+  };
 }

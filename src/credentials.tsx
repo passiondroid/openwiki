@@ -915,7 +915,9 @@ function moveSelectionIndex(
 }
 
 function getProviderArticle(provider: OpenWikiProvider): "a" | "an" {
-  return provider === "baseten" || provider === "fireworks" ? "a" : "an";
+  return provider === "baseten" || provider === "fireworks" || provider === "mimo"
+    ? "a"
+    : "an";
 }
 
 function sanitizeInputChunk(value: string): string {
